@@ -45,6 +45,10 @@
 #include <bluetooth/hci.h>
 #include <bluetooth/hci_lib.h>
 
+#ifndef MIN
+#define MIN(a,b) ((a)<(b)?(a):(b))
+#endif
+
 typedef struct {
 	char *str;
 	unsigned int val;
