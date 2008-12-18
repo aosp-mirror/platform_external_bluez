@@ -146,7 +146,7 @@ static int uart_speed(int s)
 	}
 }
 
-static int set_speed(int fd, struct termios *ti, int speed)
+int set_speed(int fd, struct termios *ti, int speed)
 {
 	cfsetospeed(ti, uart_speed(speed));
 	cfsetispeed(ti, uart_speed(speed));
@@ -347,7 +347,7 @@ static int texas(int fd, struct uart_t *u, struct termios *ti)
 extern int texasalt_init(int fd, int speed);
 
 int texasalt(int fd, struct uart_t *u, struct termios *ti) {
-	texasalt_init(fd, u->speed);
+	return texasalt_init(fd, u->speed);
 }
 
 static int read_check(int fd, void *buf, int count)
@@ -1230,7 +1230,7 @@ int main(int argc, char *argv[])
 {
 	struct uart_t *u = NULL;
 	int detach, printpid, opt, i, n, ld, err;
-	int to = 5; 
+	int to = 5;
 	int init_speed = 0;
 	int send_break = 0;
 	pid_t pid;

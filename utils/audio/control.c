@@ -101,7 +101,7 @@ static uint32_t tg_record_id = 0;
 static uint32_t ct_record_id = 0;
 
 static GIOChannel *avctp_server = NULL;
-
+static gchar *input_device_name = NULL;
 static GSList *sessions = NULL;
 
 typedef enum {
@@ -584,10 +584,14 @@ static int uinput_create(char *name)
 static void init_uinput(struct avctp *session)
 {
 	char address[18], *name;
+	GError *err = NULL;
 
 	ba2str(&session->dst, address);
 
-	name = session->dev->name ? session->dev->name : address;
+	/* use device name from config file if specified */
+	name = input_device_name;
+	if (!name)
+		name = session->dev->name ? session->dev->name : address;
 
 	session->uinput = uinput_create(name);
 	if (session->uinput < 0)
@@ -825,8 +829,17 @@ int avrcp_init(DBusConnection *conn, GKeyFile *config)
 		if (err) {
 			debug("audio.conf: %s", err->message);
 			g_error_free(err);
+			err = NULL;
 		} else
 			master = tmp;
+
+		input_device_name = g_key_file_get_string(config,
+			"AVRCP", "InputDeviceName", &err);
+		if (err) {
+			debug("InputDeviceName not specified in audio.conf");
+			input_device_name = NULL;
+			g_error_free(err);
+		}
 	}
 
 	connection = dbus_connection_ref(conn);

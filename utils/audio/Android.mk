@@ -1,32 +1,8 @@
-# Note: this currently does not build due to a dependency on
-# libhciserver, which the Android build of bluez-utils/hcid
-# does not produce.
-
-BUILD_HEADSETD:=0
-ifeq ($(BUILD_HEADSETD),1)
-
 LOCAL_PATH:= $(call my-dir)
 
-#
-# headsetd 
-#
+# A2DP plugin
 
 include $(CLEAR_VARS)
-
-LOCAL_C_INCLUDES:= \
-	$(call include-path-for, bluez-libs) \
-	$(call include-path-for, dbus) \
-	$(call include-path-for, bluez-utils)/common \
-	$(call include-path-for, bluez-utils)/sdpd \
-	$(call include-path-for, bluez-utils)/eglib \
-	$(call include-path-for, bluez-utils)/gdbus
-
-LOCAL_CFLAGS:= \
-	-DVERSION=\"3.36\" \
-	-DSTORAGEDIR=\"/data\" \
-	-DCONFIGDIR=\"/etc\" \
-	-DENABLE_DEBUG \
-	-D__S_IFREG=0100000  # missing from bionic stat.h
 
 LOCAL_SRC_FILES:= \
 	a2dp.c \
@@ -35,22 +11,62 @@ LOCAL_SRC_FILES:= \
 	device.c \
 	headset.c \
 	ipc.c \
-	sink.c \
-	unix.c \
+	main.c \
 	manager.c \
+	sink.c \
+	unix.c
+
+LOCAL_CFLAGS:= \
+	-DVERSION=\"3.36\" \
+	-DSTORAGEDIR=\"/data/misc/hcid\" \
+	-DCONFIGDIR=\"/etc/bluez\" \
+	-D__S_IFREG=0100000  # missing from bionic stat.h
+
+LOCAL_C_INCLUDES:= \
+	$(call include-path-for, bluez-libs) \
+	$(call include-path-for, bluez-utils)/common \
+	$(call include-path-for, bluez-utils)/hcid \
+	$(call include-path-for, bluez-utils)/sdpd \
+	$(call include-path-for, bluez-utils)/eglib \
+	$(call include-path-for, bluez-utils)/gdbus \
+	$(call include-path-for, dbus)
 
 LOCAL_SHARED_LIBRARIES := \
 	libbluetooth \
+	libhcid \
 	libdbus
 
-LOCAL_STATIC_LIBRARIES := \
-	libbluez-utils-common-static \
-	libeglib_static \
-	libsdpserver_static \
-	libgdbus_static
+LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/bluez-plugin
+LOCAL_UNSTRIPPED_PATH := $(TARGET_OUT_SHARED_LIBRARIES_UNSTRIPPED)/bluez-plugin
+LOCAL_MODULE := audio
 
-LOCAL_MODULE:=headsetd
+include $(BUILD_SHARED_LIBRARY)
 
-include $(BUILD_EXECUTABLE)
+# liba2sp
 
-endif
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES:= \
+	liba2dp.c \
+	ipc.c \
+	../sbc/sbc.c.arm
+
+LOCAL_C_INCLUDES:= \
+	$(call include-path-for, bluez-libs) \
+	$(call include-path-for, bluez-utils)/common \
+	$(call include-path-for, bluez-utils)/hcid \
+	$(call include-path-for, bluez-utils)/sdpd \
+	$(call include-path-for, bluez-utils)/eglib \
+	$(call include-path-for, bluez-utils)/gdbus \
+	$(call include-path-for, bluez-utils)/sbc \
+	$(call include-path-for, dbus)
+
+LOCAL_SHARED_LIBRARIES := \
+	libbluetooth \
+	libhcid \
+	libdbus \
+	libcutils
+
+LOCAL_MODULE := liba2dp
+
+include $(BUILD_SHARED_LIBRARY)

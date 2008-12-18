@@ -5,11 +5,8 @@ LOCAL_SRC_FILES:= \
 	gmain.c \
 	gmodule.c
 
-LOCAL_C_INCLUDES:= \
-        $(LOCAL_PATH)
+LOCAL_CFLAGS+=-O3
 
 LOCAL_MODULE:=libeglib_static
-
-LOCAL_CFLAGS+=-O3
 
 include $(BUILD_STATIC_LIBRARY)

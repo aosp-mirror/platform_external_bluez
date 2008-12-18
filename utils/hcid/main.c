@@ -960,9 +960,7 @@ int main(int argc, char *argv[])
 	 * the plugins might wanna expose some paths on the bus. However the
 	 * best order of how to init various subsystems of the Bluetooth
 	 * daemon needs to be re-worked. */
-#if 0
 	plugin_init(config);
-#endif
 
 	init_security_data();
 
@@ -982,9 +980,7 @@ int main(int argc, char *argv[])
 
 	hcid_dbus_unregister();
 
-#if 0
 	plugin_cleanup();
-#endif
 
 	stop_sdp_server();
 

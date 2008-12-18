@@ -232,7 +232,7 @@ static void usage(void)
 {
 	printf("l2ping - L2CAP ping\n");
 	printf("Usage:\n");
-	printf("\tl2ping [-i device] [-s size] [-c count] [-t timeout] [-f] [-r] <bdaddr>\n");
+	printf("\tl2ping [-i device] [-s size] [-c count] [-t timeout] [-d delay] [-f] [-r] <bdaddr>\n");
 }
 
 int main(int argc, char *argv[])
@@ -242,13 +242,17 @@ int main(int argc, char *argv[])
 	/* Default options */
 	bacpy(&bdaddr, BDADDR_ANY);
 
-	while ((opt=getopt(argc,argv,"i:s:c:t:fr")) != EOF) {
+	while ((opt=getopt(argc,argv,"i:d:s:c:t:fr")) != EOF) {
 		switch(opt) {
 		case 'i':
 			if (!strncasecmp(optarg, "hci", 3))
 				hci_devba(atoi(optarg + 3), &bdaddr);
 			else
 				str2ba(optarg, &bdaddr);
+			break;
+
+		case 'd':
+			delay = atoi(optarg);
 			break;
 
 		case 'f':
