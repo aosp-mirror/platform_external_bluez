@@ -824,6 +824,7 @@ static int handle_a2dp_transport(struct unix_client *client,
 	if (client->caps) {
 		g_slist_foreach(client->caps, (GFunc) g_free, NULL);
 		g_slist_free(client->caps);
+		client->caps = NULL;
 	}
 
 	media_transport = avdtp_service_cap_new(AVDTP_MEDIA_TRANSPORT,
@@ -954,7 +955,7 @@ static void handle_streamstart_req(struct unix_client *client,
 	return;
 
 failed:
-	unix_ipc_error(client, BT_STREAMSTART_REQ, EIO);
+	unix_ipc_error(client, BT_STREAMSTART_RSP, EIO);
 }
 
 static void handle_streamstop_req(struct unix_client *client,
@@ -968,7 +969,7 @@ static void handle_streamstop_req(struct unix_client *client,
 	return;
 
 failed:
-	unix_ipc_error(client, BT_STREAMSTOP_REQ, EIO);
+	unix_ipc_error(client, BT_STREAMSTOP_RSP, EIO);
 }
 
 static void handle_control_req(struct unix_client *client,
