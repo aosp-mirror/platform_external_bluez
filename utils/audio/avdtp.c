@@ -583,8 +583,9 @@ static gboolean stream_timeout(struct avdtp_stream *stream)
 {
 	struct avdtp *session = stream->session;
 
+/* Disabled so we do not disconnect immediately after sending BT_STREAMSTOP_REQ
 	avdtp_close(session, stream);
-
+*/
 	stream->idle_timer = 0;
 
 	return FALSE;
@@ -2758,7 +2759,6 @@ static void avdtp_server_cb(GIOChannel *chan, int err, const bdaddr_t *src,
 
 	session->io = g_io_add_watch(chan, G_IO_ERR | G_IO_HUP | G_IO_NVAL,
 					(GIOFunc) session_cb, session);
-	g_io_channel_unref(chan);
 
 	if (service_req_auth(src, dst, ADVANCED_AUDIO_UUID, auth_cb,
 			session) < 0) {
@@ -2766,6 +2766,7 @@ static void avdtp_server_cb(GIOChannel *chan, int err, const bdaddr_t *src,
 		goto drop;
 	}
 
+	g_io_channel_unref(chan);
 	return;
 
 drop:

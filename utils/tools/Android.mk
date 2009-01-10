@@ -1,6 +1,30 @@
 LOCAL_PATH:= $(call my-dir)
 
 #
+# avinfo
+#
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES:= \
+	avinfo.c
+
+LOCAL_C_INCLUDES:= \
+	$(call include-path-for, bluez-libs)
+
+LOCAL_CFLAGS:= \
+	-DVERSION=\"3.36\"
+
+LOCAL_SHARED_LIBRARIES := \
+	libbluetooth
+
+LOCAL_MODULE_PATH := $(TARGET_OUT_OPTIONAL_EXECUTABLES)
+LOCAL_MODULE_TAGS := eng
+LOCAL_MODULE:=avinfo
+
+include $(BUILD_EXECUTABLE)
+
+#
 # sdptool
 #
 
