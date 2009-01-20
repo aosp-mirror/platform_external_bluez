@@ -2,7 +2,7 @@
  *
  *  Bluetooth low-complexity, subband codec (SBC) decoder
  *
- *  Copyright (C) 2004-2008  Marcel Holtmann <marcel@holtmann.org>
+ *  Copyright (C) 2004-2009  Marcel Holtmann <marcel@holtmann.org>
  *
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -37,8 +37,11 @@
 #include <sys/soundcard.h>
 
 #include "sbc.h"
+#include "formats.h"
 
 #define BUF_SIZE 8192
+
+static int verbose = 0;
 
 static void decode(char *filename, char *output, int tofile)
 {
@@ -119,28 +122,53 @@ static void decode(char *filename, char *output, int tofile)
 		frequency = 0;
 	}
 
-	printf("%d Hz, %d channels\n", frequency, channels);
-	if (!tofile) {
-		if (ioctl(ad, SNDCTL_DSP_SETFMT, &format) < 0) {
-			fprintf(stderr, "Can't set audio format on %s: %s\n",
-					output, strerror(errno));
+	if (verbose) {
+		fprintf(stderr,"decoding %s with rate %d, %d subbands, "
+			"%d bits, allocation method %s and mode %s\n",
+			filename, frequency, sbc.subbands * 4 + 4, sbc.bitpool,
+			sbc.allocation == SBC_AM_SNR ? "SNR" : "LOUDNESS",
+			sbc.mode == SBC_MODE_MONO ? "MONO" :
+					sbc.mode == SBC_MODE_STEREO ?
+						"STEREO" : "JOINTSTEREO");
+	}
+
+	if (tofile) {
+		struct au_header au_hdr;
+
+		au_hdr.magic       = AU_MAGIC;
+		au_hdr.hdr_size    = BE_INT(24);
+		au_hdr.data_size   = BE_INT(0);
+		au_hdr.encoding    = BE_INT(AU_FMT_LIN16);
+		au_hdr.sample_rate = BE_INT(frequency);
+		au_hdr.channels    = BE_INT(channels);
+
+		written = write(ad, &au_hdr, sizeof(au_hdr));
+		if (written < sizeof(au_hdr)) {
+			fprintf(stderr, "Failed to write header\n");
 			goto close;
 		}
+	} else {
+		if (ioctl(ad, SNDCTL_DSP_SETFMT, &format) < 0) {
+			fprintf(stderr, "Can't set audio format on %s: %s\n",
+						output, strerror(errno));
+			goto close;
+		}
+
 		if (ioctl(ad, SNDCTL_DSP_CHANNELS, &channels) < 0) {
-			fprintf(stderr,
-				"Can't set number of channels on %s: %s\n",
-				output, strerror(errno));
+			fprintf(stderr, "Can't set number of channels on %s: %s\n",
+						output, strerror(errno));
 			goto close;
 		}
 
 		if (ioctl(ad, SNDCTL_DSP_SPEED, &frequency) < 0) {
 			fprintf(stderr, "Can't set audio rate on %s: %s\n",
-					output, strerror(errno));
+						output, strerror(errno));
 			goto close;
 		}
 	}
 
-	count = 0;
+	count = len;
+
 	while (framelen > 0) {
 		/* we have completed an sbc_decode at this point sbc.len is the
 		 * length of the frame we just decoded count is the number of
@@ -162,16 +190,15 @@ static void decode(char *filename, char *output, int tofile)
 			exit(1);
 		}
 
-		/* increase the count */
-		count += len;
-
 		/* push the pointer in the file forward to the next bit to be
 		 * decoded tell the decoder to decode up to the remaining
 		 * length of the file (!) */
 		pos += framelen;
 		framelen = sbc_decode(&sbc, stream + pos, streamlen - pos,
-					buf + count, sizeof(buf) - count,
-					&len);
+					buf + count, sizeof(buf) - count, &len);
+
+		/* increase the count */
+		count += len;
 	}
 
 	if (count > 0) {
@@ -192,7 +219,7 @@ free:
 static void usage(void)
 {
 	printf("SBC decoder utility ver %s\n", VERSION);
-	printf("Copyright (c) 2004-2008  Marcel Holtmann\n\n");
+	printf("Copyright (c) 2004-2009  Marcel Holtmann\n\n");
 
 	printf("Usage:\n"
 		"\tsbcdec [options] file(s)\n"
@@ -217,9 +244,10 @@ static struct option main_options[] = {
 int main(int argc, char *argv[])
 {
 	char *output = NULL;
-	int i, opt, verbose = 0, tofile = 0;
+	int i, opt, tofile = 0;
 
-	while ((opt = getopt_long(argc, argv, "+hvd:f:", main_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "+hvd:f:",
+						main_options, NULL)) != -1) {
 		switch(opt) {
 		case 'h':
 			usage();
