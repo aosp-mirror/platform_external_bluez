@@ -2,7 +2,7 @@
  *
  *  Bluetooth low-complexity, subband codec (SBC) encoder
  *
- *  Copyright (C) 2004-2008  Marcel Holtmann <marcel@holtmann.org>
+ *  Copyright (C) 2004-2009  Marcel Holtmann <marcel@holtmann.org>
  *
  *
  *  This program is free software; you can redistribute it and/or modify
@@ -33,41 +33,12 @@
 #include <stdint.h>
 #include <string.h>
 #include <getopt.h>
-#include <byteswap.h>
 #include <sys/stat.h>
 
 #include "sbc.h"
+#include "formats.h"
 
-#if __BYTE_ORDER == __LITTLE_ENDIAN
-#define COMPOSE_ID(a,b,c,d)	((a) | ((b)<<8) | ((c)<<16) | ((d)<<24))
-#define LE_SHORT(v)		(v)
-#define LE_INT(v)		(v)
-#define BE_SHORT(v)		bswap_16(v)
-#define BE_INT(v)		bswap_32(v)
-#elif __BYTE_ORDER == __BIG_ENDIAN
-#define COMPOSE_ID(a,b,c,d)	((d) | ((c)<<8) | ((b)<<16) | ((a)<<24))
-#define LE_SHORT(v)		bswap_16(v)
-#define LE_INT(v)		bswap_32(v)
-#define BE_SHORT(v)		(v)
-#define BE_INT(v)		(v)
-#else
-#error "Wrong endian"
-#endif
-
-#define AU_MAGIC		COMPOSE_ID('.','s','n','d')
-
-#define AU_FMT_ULAW		1
-#define AU_FMT_LIN8		2
-#define AU_FMT_LIN16		3
-
-struct au_header {
-	uint32_t magic;		/* '.snd' */
-	uint32_t hdr_size;	/* size of header (min 24) */
-	uint32_t data_size;	/* size of data */
-	uint32_t encoding;	/* see to AU_FMT_XXXX */
-	uint32_t sample_rate;	/* sample rate */
-	uint32_t channels;	/* number of channels (voices) */
-};
+static int verbose = 0;
 
 static ssize_t __read(int fd, void *buf, size_t count)
 {
@@ -76,7 +47,7 @@ static ssize_t __read(int fd, void *buf, size_t count)
 	while (count > 0) {
 		len = read(fd, buf + pos, count);
 		if (len <= 0)
-			return len;
+			return pos > len ? pos : len;
 
 		count -= len;
 		pos   += len;
@@ -101,12 +72,13 @@ static ssize_t __write(int fd, const void *buf, size_t count)
 	return pos;
 }
 
-static void encode(char *filename, int subbands, int joint)
+static void encode(char *filename, int subbands, int bitpool, int joint,
+					int dualchannel, int snr, int blocks)
 {
 	struct au_header *au_hdr;
 	unsigned char input[2048], output[2048];
 	sbc_t sbc;
-	int fd, len, size, count, encoded;
+	int fd, len, size, count, encoded, srate;
 
 	if (strcmp(filename, "-")) {
 		fd = open(filename, O_RDONLY);
@@ -134,7 +106,7 @@ static void encode(char *filename, int subbands, int joint)
 			BE_INT(au_hdr->hdr_size) > 128 ||
 			BE_INT(au_hdr->hdr_size) < 24 ||
 			BE_INT(au_hdr->encoding) != AU_FMT_LIN16) {
-		fprintf(stderr, "Data is not in Sun/NeXT audio S16_BE format\n");
+		fprintf(stderr, "Not in Sun/NeXT audio S16_BE format\n");
 		goto done;
 	}
 
@@ -155,24 +127,55 @@ static void encode(char *filename, int subbands, int joint)
 		break;
 	}
 
+	srate = BE_INT(au_hdr->sample_rate);
+
 	sbc.subbands = subbands == 4 ? SBC_SB_4 : SBC_SB_8;
 
-	if (BE_INT(au_hdr->channels) == 1)
+	if (BE_INT(au_hdr->channels) == 1) {
 		sbc.mode = SBC_MODE_MONO;
-	else if (joint)
+		if (joint || dualchannel) {
+			fprintf(stderr, "Audio is mono but joint or "
+				"dualchannel mode has been specified\n");
+			goto done;
+		}
+	} else if (joint && !dualchannel)
 		sbc.mode = SBC_MODE_JOINT_STEREO;
-	else
+	else if (!joint && dualchannel)
+		sbc.mode = SBC_MODE_DUAL_CHANNEL;
+	else if (!joint && !dualchannel)
 		sbc.mode = SBC_MODE_STEREO;
+	else {
+		fprintf(stderr, "Both joint and dualchannel mode have been "
+								"specified\n");
+		goto done;
+	}
 
 	sbc.endian = SBC_BE;
 	count = BE_INT(au_hdr->data_size);
 	size = len - BE_INT(au_hdr->hdr_size);
 	memmove(input, input + BE_INT(au_hdr->hdr_size), size);
 
+	sbc.bitpool = bitpool;
+	sbc.allocation = snr ? SBC_AM_SNR : SBC_AM_LOUDNESS;
+	sbc.blocks = blocks == 4 ? SBC_BLK_4 :
+			blocks == 8 ? SBC_BLK_8 :
+				blocks == 12 ? SBC_BLK_12 : SBC_BLK_16;
+
+	if (verbose) {
+		fprintf(stderr, "encoding %s with rate %d, %d blocks, "
+			"%d subbands, %d bits, allocation method %s, "
+							"and mode %s\n",
+			filename, srate, blocks, subbands, bitpool,
+			sbc.allocation == SBC_AM_SNR ? "SNR" : "LOUDNESS",
+			sbc.mode == SBC_MODE_MONO ? "MONO" :
+					sbc.mode == SBC_MODE_STEREO ?
+						"STEREO" : "JOINTSTEREO");
+	}
+
 	while (1) {
 		if (size < sizeof(input)) {
 			len = __read(fd, input + size, sizeof(input) - size);
-			if (len == 0)
+			if (len == 0 && size == 0)
 				break;
 
 			if (len < 0) {
@@ -183,8 +186,10 @@ static void encode(char *filename, int subbands, int joint)
 			size += len;
 		}
 
-		len = sbc_encode(&sbc, input, size, output, sizeof(output),
-					&encoded);
+		len = sbc_encode(&sbc, input, size,
+					output, sizeof(output), &encoded);
+		if (len <= 0)
+			break;
 		if (len < size)
 			memmove(input, input + len, size - len);
 
@@ -210,7 +215,7 @@ done:
 static void usage(void)
 {
 	printf("SBC encoder utility ver %s\n", VERSION);
-	printf("Copyright (c) 2004-2008  Marcel Holtmann\n\n");
+	printf("Copyright (c) 2004-2009  Marcel Holtmann\n\n");
 
 	printf("Usage:\n"
 		"\tsbcenc [options] file(s)\n"
@@ -220,7 +225,11 @@ static void usage(void)
 		"\t-h, --help           Display help\n"
 		"\t-v, --verbose        Verbose mode\n"
 		"\t-s, --subbands       Number of subbands to use (4 or 8)\n"
+		"\t-b, --bitpool        Bitpool value (default is 32)\n"
 		"\t-j, --joint          Joint stereo\n"
+		"\t-d, --dualchannel    Dual channel\n"
+		"\t-S, --snr            Use SNR mode (default is loudness)\n"
+		"\t-B, --blocks         Number of blocks (4, 8, 12 or 16)\n"
 		"\n");
 }
 
@@ -228,15 +237,21 @@ static struct option main_options[] = {
 	{ "help",	0, 0, 'h' },
 	{ "verbose",	0, 0, 'v' },
 	{ "subbands",	1, 0, 's' },
+	{ "bitpool",	1, 0, 'b' },
 	{ "joint",	0, 0, 'j' },
+	{ "dualchannel",0, 0, 'd' },
+	{ "snr",	0, 0, 'S' },
+	{ "blocks",	1, 0, 'B' },
 	{ 0, 0, 0, 0 }
 };
 
 int main(int argc, char *argv[])
 {
-	int i, opt, verbose = 0, subbands = 8, joint = 0;
+	int i, opt, subbands = 8, bitpool = 32, joint = 0, dualchannel = 0;
+	int snr = 0, blocks = 16;
 
-	while ((opt = getopt_long(argc, argv, "+hvs:j", main_options, NULL)) != -1) {
+	while ((opt = getopt_long(argc, argv, "+hvs:b:jdSB:",
+						main_options, NULL)) != -1) {
 		switch(opt) {
 		case 'h':
 			usage();
@@ -247,19 +262,40 @@ int main(int argc, char *argv[])
 			break;
 
 		case 's':
-			subbands = atoi(strdup(optarg));
+			subbands = atoi(optarg);
 			if (subbands != 8 && subbands != 4) {
-				fprintf(stderr, "Invalid subbands %d!\n",
-						subbands);
+				fprintf(stderr, "Invalid subbands\n");
 				exit(1);
 			}
+			break;
+
+		case 'b':
+			bitpool = atoi(optarg);
 			break;
 
 		case 'j':
 			joint = 1;
 			break;
 
+		case 'd':
+			dualchannel = 1;
+			break;
+
+		case 'S':
+			snr = 1;
+			break;
+
+		case 'B':
+			blocks = atoi(optarg);
+			if (blocks != 16 && blocks != 12 &&
+						blocks != 8 && blocks != 4) {
+				fprintf(stderr, "Invalid blocks\n");
+				exit(1);
+			}
+			break;
+
 		default:
+			usage();
 			exit(1);
 		}
 	}
@@ -274,7 +310,8 @@ int main(int argc, char *argv[])
 	}
 
 	for (i = 0; i < argc; i++)
-		encode(argv[i], subbands, joint);
+		encode(argv[i], subbands, bitpool, joint, dualchannel,
+								snr, blocks);
 
 	return 0;
 }
