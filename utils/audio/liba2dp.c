@@ -185,6 +185,13 @@ retry:
 	}
 	data->stream.events = POLLOUT;
 
+	data->count = sizeof(struct rtp_header) + sizeof(struct rtp_payload);
+	data->frame_count = 0;
+	data->samples = 0;
+	data->nsamples = 0;
+	data->seq_num = 0;
+	data->frame_count = 0;
+
 	return 0;
 }
 
@@ -405,7 +412,6 @@ static void bluetooth_a2dp_setup(struct bluetooth_data *data)
 	data->sbc.bitpool = active_capabilities.max_bitpool;
 	data->codesize = sbc_get_codesize(&data->sbc);
 	data->frame_duration = sbc_get_frame_duration(&data->sbc);
-	data->count = sizeof(struct rtp_header) + sizeof(struct rtp_payload);
 }
 
 static int bluetooth_a2dp_hw_params(struct bluetooth_data *data)
@@ -558,11 +564,8 @@ static int avdtp_write(struct bluetooth_data *data, unsigned long duration)
 	if (ret == 1 && data->stream.revents == POLLOUT) {
 		gettimeofday(&now, NULL);
 		if (data->last_write.tv_sec || data->last_write.tv_usec) {
-			if (now.tv_usec > data->last_write.tv_usec)
-				delta = now.tv_usec - data->last_write.tv_usec;
-			else
-				delta = (1000000 - data->last_write.tv_usec) + now.tv_usec;
-
+			delta = (now.tv_sec - data->last_write.tv_sec) * 1000000 +
+					now.tv_usec - data->last_write.tv_usec;
 			if (duration > delta) {
 				VDBG("duration: %ld delta: %ld, delay %ld us",
 					duration, delta, duration - delta);
@@ -777,7 +780,7 @@ int a2dp_write(a2dpData d, const void* buffer, int count)
 	}
 
 	while (frames_left >= codesize) {
-		/* Enough data to encode (sbc wants 1k blocks) */
+		/* Enough data to encode (sbc wants 512 byte blocks) */
 		encoded = sbc_encode(&(data->sbc), src, codesize,
 					data->buffer + data->count,
 					sizeof(data->buffer) - data->count,
