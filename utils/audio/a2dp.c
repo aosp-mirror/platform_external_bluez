@@ -357,10 +357,14 @@ static gboolean sbc_getcap_ind(struct avdtp *session, struct avdtp_local_sep *se
 	sbc_cap.cap.media_type = AVDTP_MEDIA_TYPE_AUDIO;
 	sbc_cap.cap.media_codec_type = A2DP_CODEC_SBC;
 
+#ifdef ANDROID
+	sbc_cap.frequency = SBC_SAMPLING_FREQ_44100;
+#else
 	sbc_cap.frequency = ( SBC_SAMPLING_FREQ_48000 |
 				SBC_SAMPLING_FREQ_44100 |
 				SBC_SAMPLING_FREQ_32000 |
 				SBC_SAMPLING_FREQ_16000 );
+#endif
 
 	sbc_cap.channel_mode = ( SBC_CHANNEL_MODE_JOINT_STEREO |
 					SBC_CHANNEL_MODE_STEREO |
@@ -1467,4 +1471,3 @@ gboolean a2dp_sep_unlock(struct a2dp_sep *sep, struct avdtp *session)
 
 	return TRUE;
 }
-

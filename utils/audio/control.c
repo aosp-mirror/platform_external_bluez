@@ -98,7 +98,9 @@
 static DBusConnection *connection = NULL;
 
 static uint32_t tg_record_id = 0;
+#ifndef ANDROID
 static uint32_t ct_record_id = 0;
+#endif
 
 static GIOChannel *avctp_server = NULL;
 static gchar *input_device_name = NULL;
@@ -179,7 +181,7 @@ static sdp_record_t *avrcp_ct_record()
 	sdp_list_t *aproto, *proto[2];
 	sdp_record_t *record;
 	sdp_data_t *psm, *version, *features;
-	uint16_t lp = AVCTP_PSM, ver = 0x0103, feat = 0x000f;
+	int16_t lp = AVCTP_PSM, ver = 0x0100, feat = 0x000f;
 
 	record = sdp_record_alloc();
 	if (!record)
@@ -242,7 +244,7 @@ static sdp_record_t *avrcp_tg_record()
 	sdp_list_t *aproto, *proto[2];
 	sdp_record_t *record;
 	sdp_data_t *psm, *version, *features;
-	uint16_t lp = AVCTP_PSM, ver = 0x0103, feat = 0x000f;
+	uint16_t lp = AVCTP_PSM, ver = 0x0100, feat = 0x000f;
 
 	record = sdp_record_alloc();
 	if (!record)
@@ -425,7 +427,7 @@ static void avctp_unref(struct avctp *session)
 	if (session->io)
 		g_source_remove(session->io);
 
-	if (session->dev)
+	if (session->dev && session->dev->control)
 		session->dev->control->session = NULL;
 
 	if (session->uinput >= 0) {
@@ -857,6 +859,7 @@ int avrcp_init(DBusConnection *conn, GKeyFile *config)
 	}
 	tg_record_id = record->handle;
 
+#ifndef ANDROID
 	record = avrcp_ct_record();
 	if (!record) {
 		error("Unable to allocate new service record");
@@ -869,6 +872,7 @@ int avrcp_init(DBusConnection *conn, GKeyFile *config)
 		return -1;
 	}
 	ct_record_id = record->handle;
+#endif
 
 	avctp_server = avctp_server_socket(master);
 	if (!avctp_server)
@@ -886,9 +890,10 @@ void avrcp_exit(void)
 	g_io_channel_unref(avctp_server);
 	avctp_server = NULL;
 
+#ifndef ANDROID
 	remove_record_from_server(ct_record_id);
 	ct_record_id = 0;
-
+#endif
 	remove_record_from_server(tg_record_id);
 	tg_record_id = 0;
 
