@@ -359,6 +359,9 @@ struct avdtp {
 
 	guint dc_timer;
 
+	/* Attempt stream setup instead of disconnecting */
+	gboolean stream_setup;
+
 	DBusPendingCall *pending_auth;
 };
 
@@ -466,13 +469,21 @@ static gboolean stream_open_timeout(gpointer user_data)
 static gboolean disconnect_timeout(gpointer user_data)
 {
 	struct avdtp *session = user_data;
+	struct audio_device *dev;
+	gboolean stream_setup;
+	int i = 0;
 
 	assert(session->ref == 1);
 
 	session->dc_timer = 0;
+	stream_setup = session->stream_setup;
+	session->stream_setup = FALSE;
+	dev = manager_find_device(&session->dst, AUDIO_CONTROL_INTERFACE, FALSE);
 
-	connection_lost(session, -ETIMEDOUT);
-
+	if (dev && dev->sink && stream_setup)
+		sink_setup_stream(dev->sink, session);
+	else
+		connection_lost(session, -ETIMEDOUT);
 	return FALSE;
 }
 
@@ -480,6 +491,7 @@ static void remove_disconnect_timer(struct avdtp *session)
 {
 	g_source_remove(session->dc_timer);
 	session->dc_timer = 0;
+	session->stream_setup = FALSE;
 }
 
 static void set_disconnect_timer(struct avdtp *session)
@@ -740,8 +752,10 @@ static void connection_lost(struct avdtp *session, int err)
 
 	dev = manager_find_device(&session->dst, AUDIO_CONTROL_INTERFACE,
 					FALSE);
-	if (dev)
+	if (dev && dev->control) {
+		device_remove_control_timer(dev);
 		avrcp_disconnect(dev);
+	}
 
 	if (session->state == AVDTP_SESSION_STATE_CONNECTED) {
 		char address[18];
@@ -2697,14 +2711,15 @@ static void auth_cb(DBusError *derr, void *user_data)
 
 	session->buf = g_malloc0(session->mtu);
 
+	session->stream_setup = TRUE;
 	set_disconnect_timer(session);
 
 	session->state = AVDTP_SESSION_STATE_CONNECTED;
 
 	dev = manager_find_device(&session->dst, AUDIO_CONTROL_INTERFACE,
 					FALSE);
-	if (dev)
-		avrcp_connect(dev);
+	if (dev && dev->control)
+		device_set_control_timer(dev);
 
 	g_source_remove(session->io);
 

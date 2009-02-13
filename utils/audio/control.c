@@ -652,6 +652,7 @@ static void avctp_server_cb(GIOChannel *chan, int err, const bdaddr_t *src,
 	struct l2cap_options l2o;
 	struct avctp *session;
 	GIOCondition flags = G_IO_ERR | G_IO_HUP | G_IO_NVAL;
+	struct audio_device *dev;
 	char address[18];
 
 	if (err < 0) {
@@ -670,6 +671,18 @@ static void avctp_server_cb(GIOChannel *chan, int err, const bdaddr_t *src,
 		error("Refusing unexpected connect from %s", address);
 		goto drop;
 	}
+
+	dev = manager_find_device(&session->dst, AUDIO_CONTROL_INTERFACE, FALSE);
+
+	if (!dev) {
+		error("Unable to get audio device object for %s", address);
+		goto drop;
+	}
+
+	if (!dev->control)
+		dev->control = control_init(dev);
+
+	device_remove_control_timer(dev);
 
 	session->state = AVCTP_STATE_CONNECTING;
 	session->sock = g_io_channel_unix_get_fd(chan);
@@ -787,6 +800,8 @@ gboolean avrcp_connect(struct audio_device *dev)
 		error("Unable to create new AVCTP session");
 		return FALSE;
 	}
+
+	device_remove_control_timer(dev);
 
 	session->dev = dev;
 	session->state = AVCTP_STATE_CONNECTING;
