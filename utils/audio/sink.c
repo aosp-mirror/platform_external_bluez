@@ -383,9 +383,11 @@ static void discovery_complete(struct avdtp *session, GSList *seps, struct avdtp
 	return;
 
 failed:
-	if (pending->msg)
-		error_failed(pending->conn, pending->msg, "Stream setup failed");
-	pending_request_free(pending);
+	if (pending) {
+		if (pending->msg)
+			error_failed(pending->conn, pending->msg, "Stream setup failed");
+		pending_request_free(pending);
+	}
 	sink->connect = NULL;
 	avdtp_unref(sink->session);
 	sink->session = NULL;
