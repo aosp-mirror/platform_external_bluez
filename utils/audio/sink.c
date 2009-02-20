@@ -379,7 +379,8 @@ static void discovery_complete(struct avdtp *session, GSList *seps, struct avdtp
 	if (id == 0)
 		goto failed;
 
-	pending->id = id;
+	if (pending)
+		pending->id = id;
 	return;
 
 failed:
