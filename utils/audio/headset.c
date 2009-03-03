@@ -1820,8 +1820,6 @@ void headset_set_state(struct audio_device *dev, headset_state_t state)
 	case HEADSET_STATE_PLAY_IN_PROGRESS:
 		break;
 	case HEADSET_STATE_PLAYING:
-		if (hs->sco_id)
-			g_source_remove(hs->sco_id);
 		hs->sco_id = g_io_add_watch(hs->sco,
 					G_IO_ERR | G_IO_HUP | G_IO_NVAL,
 					(GIOFunc) sco_cb, dev);

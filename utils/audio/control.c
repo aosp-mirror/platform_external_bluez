@@ -450,11 +450,6 @@ static gboolean session_cb(GIOChannel *chan, GIOCondition cond,
 	if (!(cond | G_IO_IN))
 		goto failed;
 
-	if (!g_slist_find(sessions, session)) {
-		error("avctp session_cb: session no longer exists");
-		return FALSE;
-	}
-
 	ret = read(session->sock, buf, sizeof(buf));
 	if (ret <= 0)
 		goto failed;
@@ -636,11 +631,6 @@ static void auth_cb(DBusError *derr, void *user_data)
 {
 	struct avctp *session = user_data;
 
-	if (!g_slist_find(sessions, session)) {
-		error("avctp auth_cb: session no longer exists");
-		return;
-	}
-
 	if (derr && dbus_error_is_set(derr)) {
 		error("Access denied: %s", derr->message);
 		if (dbus_error_has_name(derr, DBUS_ERROR_NO_REPLY)) {
@@ -709,8 +699,6 @@ static void avctp_server_cb(GIOChannel *chan, int err, const bdaddr_t *src,
 
 	session->mtu = l2o.imtu;
 
-	if (session->io)
-		g_source_remove(session->io);
 	session->io = g_io_add_watch(chan, flags, (GIOFunc) session_cb,
 				session);
 	g_io_channel_unref(chan);
@@ -761,11 +749,6 @@ static void avctp_connect_cb(GIOChannel *chan, int err, const bdaddr_t *src,
 	int sk;
 	char address[18];
 
-	if (!g_slist_find(sessions, session)) {
-		error("avctp_connect_cb: session no longer exists");
-		return;
-	}
-
 	if (err < 0) {
 		avctp_unref(session);
 		error("AVCTP connect(%s): %s (%d)", address, strerror(-err),
@@ -798,8 +781,6 @@ static void avctp_connect_cb(GIOChannel *chan, int err, const bdaddr_t *src,
 
 	session->state = AVCTP_STATE_CONNECTED;
 	session->mtu = l2o.imtu;
-	if (session->io)
-		g_source_remove(session->io);
 	session->io = g_io_add_watch(chan,
 				G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
 				(GIOFunc) session_cb, session);

@@ -502,10 +502,6 @@ void g_main_loop_run(GMainLoop *loop)
 		struct io_watch *w;
 
 		for (nfds = 0, l = context->io_watches; l != NULL; l = l->next, nfds++) {
-			if (nfds == open_max) {
-				error("Number of io_watches exceeds open_max in g_main_loop_run. We probably have a leak.");
-				abort();
-			}
 			w = l->data;
 			ufds[nfds].fd = w->channel->fd;
 			ufds[nfds].events = w->condition;
@@ -526,7 +522,7 @@ void g_main_loop_run(GMainLoop *loop)
 
 			w = context->io_watches->data;
 
-			if (!w || !w->revents || !*w->revents) {
+			if (!*w->revents) {
 				context->io_watches = g_slist_remove(context->io_watches, w);
 				context->proc_io_watches = watch_list_add(context->proc_io_watches, w);
 				continue;

@@ -110,9 +110,6 @@ static void client_free(struct unix_client *client)
 		break;
 	}
 
-	if (client->cancel && client->req_id > 0)
-		client->cancel(client->dev, client->req_id);
-
 	if (client->sock >= 0)
 		close(client->sock);
 
@@ -202,14 +199,7 @@ static void stream_state_changed(struct avdtp_stream *stream,
 					void *user_data)
 {
 	struct unix_client *client = user_data;
-	struct a2dp_data *a2dp;
-
-	if (!g_slist_find(clients, client)) {
-		debug("Client disconnected in stream_state_changed");
-		return;
-	}
-
-	a2dp = &client->d.a2dp;
+	struct a2dp_data *a2dp = &client->d.a2dp;
 
 	switch (new_state) {
 	case AVDTP_STATE_IDLE:
@@ -436,11 +426,6 @@ static void a2dp_config_complete(struct avdtp *session, struct a2dp_sep *sep,
 	uint16_t imtu, omtu;
 	GSList *caps;
 
-	if (!g_slist_find(clients, client)) {
-		debug("Client disconnected in a2dp_config_complete");
-		return;
-	}
-
 	if (err)
 		goto failed;
 
@@ -502,11 +487,6 @@ static void a2dp_resume_complete(struct avdtp *session,
 	struct bt_streamfd_ind *ind = (void *) buf;
 	struct a2dp_data *a2dp = &client->d.a2dp;
 
-	if (!g_slist_find(clients, client)) {
-		debug("Client disconnected in a2dp_resume_complete");
-		return;
-	}
-
 	if (err)
 		goto failed;
 
@@ -548,11 +528,6 @@ static void a2dp_suspend_complete(struct avdtp *session,
 	char buf[BT_AUDIO_IPC_PACKET_SIZE];
 	struct bt_streamstart_rsp *rsp = (void *) buf;
 	struct a2dp_data *a2dp = &client->d.a2dp;
-
-	if (!g_slist_find(clients, client)) {
-		debug("Client disconnected in a2dp_suspend_complete");
-		return;
-	}
 
 	if (err)
 		goto failed;
@@ -772,11 +747,6 @@ failed:
 static void create_cb(struct audio_device *dev, void *user_data)
 {
 	struct unix_client *client = user_data;
-
-	if (!g_slist_find(clients, client)) {
-		debug("Client disconnected during device creation");
-		return;
-	}
 
 	if (!dev)
 		unix_ipc_error(client, BT_GETCAPABILITIES_RSP, EIO);
@@ -1022,20 +992,12 @@ static gboolean client_cb(GIOChannel *chan, GIOCondition cond, gpointer data)
 	bt_audio_msg_header_t *msghdr = (void *) buf;
 	struct unix_client *client = data;
 	int len;
-	struct a2dp_data *a2dp;
-	struct headset_data *hs;
+	struct a2dp_data *a2dp = &client->d.a2dp;
+	struct headset_data *hs = &client->d.hs;
 	const char *type;
 
 	if (cond & G_IO_NVAL)
 		return FALSE;
-
-	if (!g_slist_find(clients, client)) {
-		debug("Client disconnected in client_cb");
-		return TRUE;
-	}
-
-	a2dp = &client->d.a2dp;
-	hs = &client->d.hs;
 
 	if (cond & (G_IO_HUP | G_IO_ERR)) {
 		debug("Unix client disconnected (fd=%d)", client->sock);

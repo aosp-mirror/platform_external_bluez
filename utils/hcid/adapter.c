@@ -2488,6 +2488,8 @@ static DBusMessage *remove_bonding(DBusConnection *conn, DBusMessage *msg,
 					&& msg){
 			int err = errno;
 			error("Disconnect failed");
+			hci_close_dev(dev);
+			return failed_strerror(msg, err);
 		}
 	}
 
@@ -2598,7 +2600,6 @@ static gboolean create_bonding_conn_complete(GIOChannel *io, GIOCondition cond,
 	if (!adapter->bonding) {
 		/* If we come here it implies a bug somewhere */
 		debug("create_bonding_conn_complete: no pending bonding!");
-		adapter->bonding->io_id = 0;
 		g_io_channel_close(io);
 		g_io_channel_unref(io);
 		return FALSE;
