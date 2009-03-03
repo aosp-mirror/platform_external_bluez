@@ -88,6 +88,7 @@ struct a2dp_setup {
 	gboolean start;
 	GSList *cb;
 	int ref;
+	guint idle;
 };
 
 static DBusConnection *connection = NULL;
@@ -123,12 +124,20 @@ static void setup_free(struct a2dp_setup *s)
 
 static void setup_unref(struct a2dp_setup *setup)
 {
+	if (!g_slist_find(setups, setup)) {
+		error("setup_unref: trying to unref a unknown setup");
+		return;
+	}
+
 	setup->ref--;
 
 	debug("setup_unref(%p): ref=%d", setup, setup->ref);
 
-	if (setup->ref <= 0)
+	if (setup->ref <= 0) {
+		if (setup->idle)
+			g_source_remove(setup->idle);
 		setup_free(setup);
+	}
 }
 
 static struct audio_device *a2dp_get_dev(struct avdtp *session)
@@ -144,6 +153,8 @@ static gboolean finalize_config(struct a2dp_setup *s)
 {
 	GSList *l;
 
+	/* we return false so this callback will be removed */
+	s->idle = 0;
 	setup_ref(s);
 	for (l = s->cb; l != NULL; l = l->next) {
 		struct a2dp_setup_cb *cb = l->data;
@@ -174,6 +185,8 @@ static gboolean finalize_resume(struct a2dp_setup *s)
 {
 	GSList *l;
 
+	/* we return false so this callback will be removed */
+	s->idle = 0;
 	setup_ref(s);
 	for (l = s->cb; l != NULL; l = l->next) {
 		struct a2dp_setup_cb *cb = l->data;
@@ -203,6 +216,8 @@ static gboolean finalize_suspend(struct a2dp_setup *s)
 {
 	GSList *l;
 
+	/* we return false so this callback will be removed */
+	s->idle = 0;
 	setup_ref(s);
 	for (l = s->cb; l != NULL; l = l->next) {
 		struct a2dp_setup_cb *cb = l->data;
@@ -498,7 +513,7 @@ static void setconf_cfm(struct avdtp *session, struct avdtp_local_sep *sep,
 	avdtp_stream_add_cb(session, stream, stream_state_changed, a2dp_sep);
 	a2dp_sep->stream = stream;
 
-	if (!setup)
+	if (!setup || !setup->stream)
 		return;
 
 	dev = a2dp_get_dev(session);
@@ -1302,9 +1317,11 @@ unsigned int a2dp_source_config(struct avdtp *session, a2dp_config_cb_t cb,
 		break;
 	case AVDTP_STATE_OPEN:
 	case AVDTP_STATE_STREAMING:
-		if (avdtp_stream_has_capabilities(setup->stream, caps))
-			g_idle_add((GSourceFunc) finalize_config, setup);
-		else if (!setup->reconfigure) {
+		if (avdtp_stream_has_capabilities(setup->stream, caps)) {
+			if (setup->idle)
+				g_source_remove(setup->idle);
+			setup->idle = g_idle_add((GSourceFunc) finalize_config, setup);
+		} else if (!setup->reconfigure) {
 			setup->reconfigure = TRUE;
 			if (avdtp_close(session, sep->stream) < 0) {
 				error("avdtp_close failed");
@@ -1367,8 +1384,11 @@ unsigned int a2dp_source_resume(struct avdtp *session, struct a2dp_sep *sep,
 		}
 		if (sep->suspending)
 			setup->start = TRUE;
-		else
-			g_idle_add((GSourceFunc) finalize_resume, setup);
+		else {
+			if (setup->idle)
+				g_source_remove(setup->idle);
+			setup->idle = g_idle_add((GSourceFunc) finalize_resume, setup);
+		}
 		break;
 	default:
 		error("SEP in bad state");
@@ -1412,7 +1432,9 @@ unsigned int a2dp_source_suspend(struct avdtp *session, struct a2dp_sep *sep,
 		goto failed;
 		break;
 	case AVDTP_STATE_OPEN:
-		g_idle_add((GSourceFunc) finalize_suspend, setup);
+		if (setup->idle)
+			g_source_remove(setup->idle);
+		setup->idle = g_idle_add((GSourceFunc) finalize_suspend, setup);
 		break;
 	case AVDTP_STATE_STREAMING:
 		if (avdtp_suspend(session, sep->stream) < 0) {

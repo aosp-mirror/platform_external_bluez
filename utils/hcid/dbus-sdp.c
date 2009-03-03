@@ -136,6 +136,8 @@ gboolean idle_callback(GIOChannel *io, GIOCondition cond, gpointer user_data)
 {
 	struct cached_session *s = user_data;
 
+	s->io_id = 0;
+
 	if (cond & G_IO_NVAL)
 		return FALSE;
 
@@ -394,6 +396,7 @@ static gboolean search_process_cb(GIOChannel *chan,
 	int err = 0;
 
 	if (cond & G_IO_NVAL) {
+		ctxt->io_id = 0;
 		g_io_channel_unref(chan);
 		return FALSE;
 	}
@@ -852,6 +855,8 @@ static gboolean sdp_client_connect_cb(GIOChannel *chan,
 	}
 
 	/* set the callback responsible for update the transaction data */
+	if (ctxt->io_id)
+		g_source_remove(ctxt->io_id);
 	ctxt->io_id = g_io_add_watch(chan,
 				G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL,
 				search_process_cb, ctxt);

@@ -87,6 +87,7 @@ struct bluetooth_data {
 	int link_mtu;					/* MTU for selected transport channel */
 	struct pollfd stream;			/* Audio stream filedescriptor */
 	struct pollfd server;			/* Audio daemon filedescriptor */
+	int configured;					/* true if we have a configured sink */
 
 	sbc_capabilities_t sbc_capabilities;
 	sbc_t sbc;				/* Codec data */
@@ -146,6 +147,7 @@ static void bluetooth_close(struct bluetooth_data *data)
 		sbc_finish(&data->sbc);
 
 	data->sbc_initialized = 0;
+	data->configured = 0;
 }
 
 static int bluetooth_start(struct bluetooth_data *data)
@@ -182,7 +184,7 @@ static int bluetooth_start(struct bluetooth_data *data)
 
 	data->stream.fd = bt_audio_service_get_data_fd(data->server.fd);
 	if (data->stream.fd < 0) {
-		LOGE("bt_audio_service_get_data_fd failed, errno: %d\n", errno);
+		ERR("bt_audio_service_get_data_fd failed, errno: %d", errno);
 		return -errno;
 	}
 	data->stream.events = POLLOUT;
@@ -650,7 +652,8 @@ static int audioservice_send(struct bluetooth_data *data,
 		err = -errno;
 		ERR("Error sending data to audio service: %s(%d)",
 			strerror(errno), errno);
-		bluetooth_close(data);
+		if (err == -EPIPE)
+			bluetooth_close(data);
 	}
 
 	return err;
@@ -709,22 +712,30 @@ static int audioservice_expect(struct bluetooth_data *data,
 static int bluetooth_init(struct bluetooth_data *data)
 {
 	int sk, err;
-	char buf[BT_AUDIO_IPC_PACKET_SIZE];
-	bt_audio_rsp_msg_header_t *rsp_hdr = (void*) buf;
-	struct bt_getcapabilities_req *getcaps_req = (void*) buf;
-	struct bt_getcapabilities_rsp *getcaps_rsp = (void*) buf;
 
 	DBG("bluetooth_init");
 
 	sk = bt_audio_service_open();
 	if (sk <= 0) {
 		ERR("bt_audio_service_open failed\n");
-		err = -errno;
-		goto failed;
+		return -errno;
 	}
 
 	data->server.fd = sk;
 	data->server.events = POLLIN;
+
+    return 0;
+}
+
+static int bluetooth_configure(struct bluetooth_data *data)
+{
+	char buf[BT_AUDIO_IPC_PACKET_SIZE];
+	bt_audio_rsp_msg_header_t *rsp_hdr = (void*) buf;
+	struct bt_getcapabilities_req *getcaps_req = (void*) buf;
+	struct bt_getcapabilities_rsp *getcaps_rsp = (void*) buf;
+	int err;
+
+	DBG("bluetooth_configure");
 
 	memset(getcaps_req, 0, BT_AUDIO_IPC_PACKET_SIZE);
 	getcaps_req->h.msg_type = BT_GETCAPABILITIES_REQ;
@@ -736,20 +747,19 @@ static int bluetooth_init(struct bluetooth_data *data)
 	err = audioservice_send(data, &getcaps_req->h);
 	if (err < 0) {
 		ERR("audioservice_send failed for BT_GETCAPABILITIES_REQ\n");
-		goto failed;
+		return err;
 	}
 
 	err = audioservice_expect(data, &rsp_hdr->msg_h, BT_GETCAPABILITIES_RSP);
 	if (err < 0) {
 		ERR("audioservice_expect failed for BT_GETCAPABILITIES_RSP\n");
-		goto failed;
+		return err;
 	}
 	if (rsp_hdr->posix_errno != 0) {
 		ERR("BT_GETCAPABILITIES failed : %s(%d)",
 					strerror(rsp_hdr->posix_errno),
 					rsp_hdr->posix_errno);
-		err = -rsp_hdr->posix_errno;
-		goto failed;
+		return -rsp_hdr->posix_errno;
 	}
 
 	if (getcaps_rsp->transport == BT_CAPABILITIES_TRANSPORT_A2DP)
@@ -758,23 +768,18 @@ static int bluetooth_init(struct bluetooth_data *data)
 	err = bluetooth_a2dp_hw_params(data);
 	if (err < 0) {
 		ERR("bluetooth_a2dp_hw_params failed err: %d", err);
-		goto failed;
+		return err;
 	}
 
+	data->configured = 1;
 	return 0;
-
-failed:
-	ERR("bluetooth_init failed, err: %d\n", err);
-	bt_audio_service_close(sk);
-	data->server.fd = -1;
-	return err;
 }
 
-int a2dp_init(const char* address, int rate, int channels, a2dpData* dataPtr)
+int a2dp_init(int rate, int channels, a2dpData* dataPtr)
 {
 	int err;
 
-	DBG("a2dp_init %s rate: %d channels: %d", address, rate, channels);
+	DBG("a2dp_init rate: %d channels: %d", rate, channels);
 	*dataPtr = NULL;
 	struct bluetooth_data* data = malloc(sizeof(struct bluetooth_data));
 	if (!data)
@@ -784,7 +789,7 @@ int a2dp_init(const char* address, int rate, int channels, a2dpData* dataPtr)
 	data->server.fd = -1;
 	data->stream.fd = -1;
 
-	strncpy(data->address, address, 18);
+	strncpy(data->address, "00:00:00:00:00:00", 18);
 	data->rate = rate;
 	data->channels = channels;
 
@@ -802,6 +807,16 @@ error:
 	return err;
 }
 
+void a2dp_set_sink(a2dpData d, const char* address)
+{
+	struct bluetooth_data* data = (struct bluetooth_data*)d;
+	if (strncmp(data->address, address, 18)) {
+		strncpy(data->address, address, 18);
+		// force reconfiguration
+		data->configured = 0;
+	}
+}
+
 int a2dp_write(a2dpData d, const void* buffer, int count)
 {
 	struct bluetooth_data* data = (struct bluetooth_data*)d;
@@ -811,6 +826,7 @@ int a2dp_write(a2dpData d, const void* buffer, int count)
 	long frames_left = count;
 	int encoded, written;
 	const char *buff;
+	int did_configure = 0;
 #ifdef ENABLE_TIMING
 	uint64_t begin, end;
 	DBG("********** a2dp_write **********");
@@ -823,10 +839,21 @@ int a2dp_write(a2dpData d, const void* buffer, int count)
 			return err;
 	}
 
+configure:
+	if (!data->configured) {
+    	err = bluetooth_configure(data);
+    	if (err < 0)
+			return err;
+		did_configure = 1;
+	}
+
 	if (data->stream.fd == -1) {
 		err = bluetooth_start(data);
 		if (err < 0) {
 			ERR("bluetooth_start failed err: %d", err);
+			data->configured = 0;
+			if (!did_configure)
+				goto configure;
 			return err;
 		}
 	}
