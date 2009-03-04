@@ -1,3 +1,0 @@
-/* Hack to force sbc.c to be compiled as ARM */
-
-#include "sbc.c"
