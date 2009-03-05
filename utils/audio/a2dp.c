@@ -89,6 +89,7 @@ struct a2dp_setup {
 	GSList *cb;
 	int ref;
 	guint idle;
+	guint reconfigure_timeout;
 };
 
 static DBusConnection *connection = NULL;
@@ -136,6 +137,8 @@ static void setup_unref(struct a2dp_setup *setup)
 	if (setup->ref <= 0) {
 		if (setup->idle)
 			g_source_remove(setup->idle);
+		if (setup->reconfigure_timeout)
+			g_source_remove(setup->reconfigure_timeout);
 		setup_free(setup);
 	}
 }
@@ -758,6 +761,13 @@ static gboolean a2dp_reconfigure(gpointer data)
 	GSList *l;
 	int posix_err;
 
+	if (!g_slist_find(setups, setup)) {
+		error("unknown setup in a2dp_reconfigure");
+		return FALSE;
+	}
+
+	setup->reconfigure_timeout = 0;
+
 	for (l = setup->client_caps; l != NULL; l = l->next) {
 		cap = l->data;
 
@@ -817,8 +827,12 @@ static void close_cfm(struct avdtp *session, struct avdtp_local_sep *sep,
 		return;
 	}
 
-	if (setup->reconfigure)
-		g_timeout_add(RECONFIGURE_TIMEOUT, a2dp_reconfigure, setup);
+	if (setup->reconfigure) {
+		if (setup->reconfigure_timeout)
+			g_source_remove(setup->reconfigure_timeout);
+		setup->reconfigure_timeout = g_timeout_add(RECONFIGURE_TIMEOUT,
+				a2dp_reconfigure, setup);
+	}
 }
 
 static gboolean abort_ind(struct avdtp *session, struct avdtp_local_sep *sep,
