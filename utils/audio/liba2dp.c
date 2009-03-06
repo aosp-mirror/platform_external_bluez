@@ -665,12 +665,7 @@ static int audioservice_recv(struct bluetooth_data *data,
 	int err;
 	const char *type;
 
-	VDBG("trying to receive msg from audio service...");
-	data->server.revents = 0;
-	err = poll(&data->server, 1, POLL_TIMEOUT);
-	VDBG("poll returned %d", ret);
-	if (err == 1)
-		err = recv(data->server.fd, inmsg, BT_AUDIO_IPC_PACKET_SIZE, 0);
+	err = recv(data->server.fd, inmsg, BT_AUDIO_IPC_PACKET_SIZE, 0);
 	if (err > 0) {
 		type = bt_audio_strmsg(inmsg->msg_type);
 		if (type) {
@@ -686,8 +681,8 @@ static int audioservice_recv(struct bluetooth_data *data,
 		err = -errno;
 		ERR("Error receiving data from audio service: %s(%d)",
 					strerror(errno), errno);
-		close(data->server.fd);
-		data->server.fd = -1;
+		if (err == -EPIPE)
+			bluetooth_close(data);
 	}
 
 	return err;
