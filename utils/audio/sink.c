@@ -170,7 +170,7 @@ static void stream_setup_complete(struct avdtp *session, struct a2dp_sep *sep,
 
 	pending = sink->connect;
 
-	if (stream) {
+	if (stream && !err) {
 		debug("Stream successfully created");
 
 		if (pending->msg) {
