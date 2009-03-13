@@ -2086,7 +2086,10 @@ static gboolean avdtp_set_configuration_resp(struct avdtp *session,
 						struct avdtp_single_header *resp,
 						int size)
 {
-	struct avdtp_local_sep *sep = stream->lsep;
+	struct avdtp_local_sep *sep;
+	if (!stream)
+		return TRUE;
+	sep = stream->lsep;
 
 	if (sep->cfm && sep->cfm->set_configuration)
 		sep->cfm->set_configuration(session, sep, stream, NULL,
@@ -2116,7 +2119,10 @@ static gboolean avdtp_open_resp(struct avdtp *session, struct avdtp_stream *stre
 
 	session->pending_open = stream;
 
+/* Don't set state to AVDTP_STATE_OPEN yet.
+   Instead, wait until the pending_open completes in handle_transport_connect()
 	avdtp_sep_set_state(session, sep, AVDTP_STATE_OPEN);
+*/
 
 	return TRUE;
 }
@@ -2125,7 +2131,10 @@ static gboolean avdtp_start_resp(struct avdtp *session,
 					struct avdtp_stream *stream,
 					struct seid_rej *resp, int size)
 {
-	struct avdtp_local_sep *sep = stream->lsep;
+	struct avdtp_local_sep *sep;
+	if (!stream)
+		return TRUE;
+	sep = stream->lsep;
 
 	if (sep->cfm && sep->cfm->start)
 		sep->cfm->start(session, sep, stream, NULL, sep->user_data);
@@ -2139,7 +2148,10 @@ static gboolean avdtp_close_resp(struct avdtp *session,
 					struct avdtp_stream *stream,
 					struct seid_rej *resp, int size)
 {
-	struct avdtp_local_sep *sep = stream->lsep;
+	struct avdtp_local_sep *sep;
+	if (!stream)
+		return TRUE;
+	sep = stream->lsep;
 
 	avdtp_sep_set_state(session, sep, AVDTP_STATE_CLOSING);
 
@@ -2153,7 +2165,10 @@ static gboolean avdtp_suspend_resp(struct avdtp *session,
 					struct avdtp_stream *stream,
 					void *data, int size)
 {
-	struct avdtp_local_sep *sep = stream->lsep;
+	struct avdtp_local_sep *sep;
+	if (!stream)
+		return TRUE;
+	sep = stream->lsep;
 
 	avdtp_sep_set_state(session, sep, AVDTP_STATE_OPEN);
 
@@ -2172,7 +2187,10 @@ static gboolean avdtp_abort_resp(struct avdtp *session,
 					struct avdtp_stream *stream,
 					struct seid_rej *resp, int size)
 {
-	struct avdtp_local_sep *sep = stream->lsep;
+	struct avdtp_local_sep *sep;
+	if (!stream)
+		return TRUE;
+	sep = stream->lsep;
 
 	if (sep->cfm && sep->cfm->abort)
 		sep->cfm->abort(session, sep, stream, NULL, sep->user_data);
