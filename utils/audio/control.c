@@ -98,7 +98,9 @@
 static DBusConnection *connection = NULL;
 
 static uint32_t tg_record_id = 0;
+#ifndef ANDROID
 static uint32_t ct_record_id = 0;
+#endif
 
 static GIOChannel *avctp_server = NULL;
 static gchar *input_device_name = NULL;
@@ -179,7 +181,7 @@ static sdp_record_t *avrcp_ct_record()
 	sdp_list_t *aproto, *proto[2];
 	sdp_record_t *record;
 	sdp_data_t *psm, *version, *features;
-	uint16_t lp = AVCTP_PSM, ver = 0x0103, feat = 0x000f;
+	int16_t lp = AVCTP_PSM, ver = 0x0100, feat = 0x000f;
 
 	record = sdp_record_alloc();
 	if (!record)
@@ -242,7 +244,7 @@ static sdp_record_t *avrcp_tg_record()
 	sdp_list_t *aproto, *proto[2];
 	sdp_record_t *record;
 	sdp_data_t *psm, *version, *features;
-	uint16_t lp = AVCTP_PSM, ver = 0x0103, feat = 0x000f;
+	uint16_t lp = AVCTP_PSM, ver = 0x0100, feat = 0x000f;
 
 	record = sdp_record_alloc();
 	if (!record)
@@ -425,7 +427,7 @@ static void avctp_unref(struct avctp *session)
 	if (session->io)
 		g_source_remove(session->io);
 
-	if (session->dev)
+	if (session->dev && session->dev->control)
 		session->dev->control->session = NULL;
 
 	if (session->uinput >= 0) {
@@ -447,6 +449,11 @@ static gboolean session_cb(GIOChannel *chan, GIOCondition cond,
 
 	if (!(cond | G_IO_IN))
 		goto failed;
+
+	if (!g_slist_find(sessions, session)) {
+		error("avctp session_cb: session no longer exists");
+		return FALSE;
+	}
 
 	ret = read(session->sock, buf, sizeof(buf));
 	if (ret <= 0)
@@ -629,6 +636,11 @@ static void auth_cb(DBusError *derr, void *user_data)
 {
 	struct avctp *session = user_data;
 
+	if (!g_slist_find(sessions, session)) {
+		error("avctp auth_cb: session no longer exists");
+		return;
+	}
+
 	if (derr && dbus_error_is_set(derr)) {
 		error("Access denied: %s", derr->message);
 		if (dbus_error_has_name(derr, DBUS_ERROR_NO_REPLY)) {
@@ -650,6 +662,7 @@ static void avctp_server_cb(GIOChannel *chan, int err, const bdaddr_t *src,
 	struct l2cap_options l2o;
 	struct avctp *session;
 	GIOCondition flags = G_IO_ERR | G_IO_HUP | G_IO_NVAL;
+	struct audio_device *dev;
 	char address[18];
 
 	if (err < 0) {
@@ -669,6 +682,18 @@ static void avctp_server_cb(GIOChannel *chan, int err, const bdaddr_t *src,
 		goto drop;
 	}
 
+	dev = manager_find_device(&session->dst, AUDIO_CONTROL_INTERFACE, FALSE);
+
+	if (!dev) {
+		error("Unable to get audio device object for %s", address);
+		goto drop;
+	}
+
+	if (!dev->control)
+		dev->control = control_init(dev);
+
+	device_remove_control_timer(dev);
+
 	session->state = AVCTP_STATE_CONNECTING;
 	session->sock = g_io_channel_unix_get_fd(chan);
 
@@ -684,6 +709,8 @@ static void avctp_server_cb(GIOChannel *chan, int err, const bdaddr_t *src,
 
 	session->mtu = l2o.imtu;
 
+	if (session->io)
+		g_source_remove(session->io);
 	session->io = g_io_add_watch(chan, flags, (GIOFunc) session_cb,
 				session);
 	g_io_channel_unref(chan);
@@ -734,6 +761,11 @@ static void avctp_connect_cb(GIOChannel *chan, int err, const bdaddr_t *src,
 	int sk;
 	char address[18];
 
+	if (!g_slist_find(sessions, session)) {
+		error("avctp_connect_cb: session no longer exists");
+		return;
+	}
+
 	if (err < 0) {
 		avctp_unref(session);
 		error("AVCTP connect(%s): %s (%d)", address, strerror(-err),
@@ -766,6 +798,8 @@ static void avctp_connect_cb(GIOChannel *chan, int err, const bdaddr_t *src,
 
 	session->state = AVCTP_STATE_CONNECTED;
 	session->mtu = l2o.imtu;
+	if (session->io)
+		g_source_remove(session->io);
 	session->io = g_io_add_watch(chan,
 				G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
 				(GIOFunc) session_cb, session);
@@ -785,6 +819,8 @@ gboolean avrcp_connect(struct audio_device *dev)
 		error("Unable to create new AVCTP session");
 		return FALSE;
 	}
+
+	device_remove_control_timer(dev);
 
 	session->dev = dev;
 	session->state = AVCTP_STATE_CONNECTING;
@@ -857,6 +893,7 @@ int avrcp_init(DBusConnection *conn, GKeyFile *config)
 	}
 	tg_record_id = record->handle;
 
+#ifndef ANDROID
 	record = avrcp_ct_record();
 	if (!record) {
 		error("Unable to allocate new service record");
@@ -869,6 +906,7 @@ int avrcp_init(DBusConnection *conn, GKeyFile *config)
 		return -1;
 	}
 	ct_record_id = record->handle;
+#endif
 
 	avctp_server = avctp_server_socket(master);
 	if (!avctp_server)
@@ -886,9 +924,10 @@ void avrcp_exit(void)
 	g_io_channel_unref(avctp_server);
 	avctp_server = NULL;
 
+#ifndef ANDROID
 	remove_record_from_server(ct_record_id);
 	ct_record_id = 0;
-
+#endif
 	remove_record_from_server(tg_record_id);
 	tg_record_id = 0;
 

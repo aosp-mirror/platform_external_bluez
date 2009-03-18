@@ -20,6 +20,7 @@ LOCAL_CFLAGS:= \
 	-DVERSION=\"3.36\" \
 	-DSTORAGEDIR=\"/data/misc/hcid\" \
 	-DCONFIGDIR=\"/etc/bluez\" \
+	-DANDROID \
 	-D__S_IFREG=0100000  # missing from bionic stat.h
 
 LOCAL_C_INCLUDES:= \
@@ -49,7 +50,11 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES:= \
 	liba2dp.c \
 	ipc.c \
-	../sbc/sbc.c.arm
+	../sbc/sbc.c.arm \
+	../sbc/sbc_primitives.c
+
+# to improve SBC performance	
+LOCAL_CFLAGS:= -funroll-loops
 
 LOCAL_C_INCLUDES:= \
 	$(call include-path-for, bluez-libs) \
