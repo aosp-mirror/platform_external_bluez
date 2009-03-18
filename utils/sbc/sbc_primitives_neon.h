@@ -1,9 +1,10 @@
 /*
  *
- *  BlueZ - Bluetooth protocol stack for Linux
+ *  Bluetooth low-complexity, subband codec (SBC) library
  *
- *  Copyright (C) 2006-2007  Nokia Corporation
- *  Copyright (C) 2004-2008  Marcel Holtmann <marcel@holtmann.org>
+ *  Copyright (C) 2004-2009  Marcel Holtmann <marcel@holtmann.org>
+ *  Copyright (C) 2004-2005  Henryk Ploetz <henryk@ploetzli.ch>
+ *  Copyright (C) 2005-2006  Brad Midgley <bmidgley@xmission.com>
  *
  *
  *  This library is free software; you can redistribute it and/or
@@ -22,18 +23,18 @@
  *
  */
 
-#ifdef __cplusplus
-extern "C" {
+#ifndef __SBC_PRIMITIVES_NEON_H
+#define __SBC_PRIMITIVES_NEON_H
+
+#include "sbc_primitives.h"
+
+#if defined(__GNUC__) && defined(__ARM_NEON__) && \
+		!defined(SBC_HIGH_PRECISION) && (SCALE_OUT_BITS == 15)
+
+#define SBC_BUILD_WITH_NEON_SUPPORT
+
+void sbc_init_primitives_neon(struct sbc_encoder_state *encoder_state);
+
 #endif
 
-typedef void* a2dpData;
-
-int a2dp_init(int rate, int channels, a2dpData* dataPtr);
-void a2dp_set_sink(a2dpData data, const char* address);
-int a2dp_write(a2dpData data, const void* buffer, int count);
-int a2dp_stop(a2dpData data);
-void a2dp_cleanup(a2dpData data);
-
-#ifdef __cplusplus
-}
 #endif
