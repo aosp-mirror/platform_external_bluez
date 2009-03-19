@@ -466,7 +466,7 @@ gboolean device_is_connected(struct audio_device *dev, const char *interface)
 	else if (!strcmp(interface, AUDIO_HEADSET_INTERFACE) && dev->headset &&
 			headset_is_active(dev))
 		return TRUE;
-	else if (!strcmp(interface, AUDIO_CONTROL_INTERFACE) && dev->headset &&
+	else if (!strcmp(interface, AUDIO_CONTROL_INTERFACE) && dev->control &&
 			control_is_active(dev))
 		return TRUE;
 

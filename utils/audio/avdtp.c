@@ -73,6 +73,7 @@
 #define AVDTP_PKT_TYPE_END			0x03
 
 #define AVDTP_MSG_TYPE_COMMAND			0x00
+#define AVDTP_MSG_TYPE_GENERAL_REJECT		0x01
 #define AVDTP_MSG_TYPE_ACCEPT			0x02
 #define AVDTP_MSG_TYPE_REJECT			0x03
 
@@ -1043,8 +1044,8 @@ static GSList *caps_to_list(uint8_t *data, int size,
 static gboolean avdtp_unknown_cmd(struct avdtp *session, uint8_t transaction,
 							void *buf, int size)
 {
-	return avdtp_send(session, transaction, AVDTP_MSG_TYPE_REJECT,
-								0, NULL, 0);
+	return avdtp_send(session, transaction, AVDTP_MSG_TYPE_GENERAL_REJECT,
+								session->in.signal_id, NULL, 0);
 }
 
 static gboolean avdtp_discover_cmd(struct avdtp *session, uint8_t transaction,
@@ -1078,8 +1079,8 @@ static gboolean avdtp_getcap_cmd(struct avdtp *session, uint8_t transaction,
 	uint8_t err, buf[1024], *ptr = buf;
 
 	if (size < sizeof(struct seid_req)) {
-		error("Too short getcap request");
-		return FALSE;
+		err = AVDTP_BAD_LENGTH;
+		goto failed;
 	}
 
 	sep = find_local_sep_by_seid(req->acp_seid);
@@ -1122,6 +1123,7 @@ static gboolean avdtp_setconf_cmd(struct avdtp *session, uint8_t transaction,
 	struct avdtp_local_sep *sep;
 	struct avdtp_stream *stream;
 	uint8_t err, category = 0x00;
+	GSList *l;
 
 	if (size < sizeof(struct setconf_req)) {
 		error("Too short getcap request");
@@ -1147,6 +1149,16 @@ static gboolean avdtp_setconf_cmd(struct avdtp *session, uint8_t transaction,
 					size - sizeof(struct setconf_req),
 					&stream->codec);
 	stream->sock = -1;
+
+	/* Verify that the Media Transport capability's length = 0. Reject otherwise */
+	for (l = stream->caps; l != NULL; l = g_slist_next(l)) {
+		struct avdtp_service_capability *cap = l->data;
+
+		if ((cap->category == AVDTP_MEDIA_TRANSPORT) && (cap->length != 0)) {
+			err = AVDTP_BAD_MEDIA_TRANSPORT_FORMAT;
+			goto failed;
+		}
+	}
 
 	if (sep->ind && sep->ind->set_configuration) {
 		if (!sep->ind->set_configuration(session, sep, stream,
@@ -1181,7 +1193,47 @@ failed:
 static gboolean avdtp_getconf_cmd(struct avdtp *session, uint8_t transaction,
 					struct seid_req *req, int size)
 {
-	return avdtp_unknown_cmd(session, transaction, (void *) req, size);
+	GSList *l;
+	struct avdtp_local_sep *sep = NULL;
+	int rsp_size;
+	uint8_t err;
+	uint8_t buf[1024];
+	uint8_t *ptr = buf;
+
+	if (size < sizeof(struct seid_req)) {
+		error("Too short getconf request");
+		return FALSE;
+	}
+
+	memset(buf, 0, sizeof(buf));
+
+	sep = find_local_sep_by_seid(req->acp_seid);
+	if (!sep) {
+		err = AVDTP_BAD_ACP_SEID;
+		goto failed;
+	}
+	if (!sep->stream || !sep->stream->caps) {
+		err = AVDTP_UNSUPPORTED_CONFIGURATION;
+		goto failed;
+	}
+
+	for (l = sep->stream->caps, rsp_size = 0; l != NULL; l = g_slist_next(l)) {
+		struct avdtp_service_capability *cap = l->data;
+
+		if (rsp_size + cap->length + 2 > sizeof(buf))
+			break;
+
+		memcpy(ptr, cap, cap->length + 2);
+		rsp_size += cap->length + 2;
+		ptr += cap->length + 2;
+	}
+
+	return avdtp_send(session, transaction, AVDTP_MSG_TYPE_ACCEPT,
+				AVDTP_GET_CONFIGURATION, buf, rsp_size);
+
+failed:
+	return avdtp_send(session, transaction, AVDTP_MSG_TYPE_REJECT,
+				AVDTP_GET_CONFIGURATION, &err, sizeof(err));
 }
 
 static gboolean avdtp_reconf_cmd(struct avdtp *session, uint8_t transaction,
