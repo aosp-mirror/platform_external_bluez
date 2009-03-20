@@ -589,7 +589,7 @@ static gboolean disconnect_timeout(gpointer user_data)
 	dev = manager_find_device(&session->dst, AUDIO_CONTROL_INTERFACE, FALSE);
 
 	if (dev && dev->sink && stream_setup)
-		sink_setup_stream(dev->sink, session);
+		sink_setup_stream(dev->sink, session, NULL, NULL);
 	else
 		connection_lost(session, -ETIMEDOUT);
 	return FALSE;
