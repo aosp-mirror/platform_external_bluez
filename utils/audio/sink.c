@@ -406,8 +406,10 @@ gboolean sink_setup_stream(struct sink *sink, struct avdtp *session,
 		sink->session = avdtp_ref(session);
 
 	pending = g_new0(struct pending_request, 1);
-	pending->conn = dbus_connection_ref(conn);
-	pending->msg = dbus_message_ref(msg);
+	if (conn && msg) {
+		pending->conn = dbus_connection_ref(conn);
+		pending->msg = dbus_message_ref(msg);
+	}
 	sink->connect = pending;
 
 	if (avdtp_discover(sink->session, discovery_complete, sink) < 0) {
