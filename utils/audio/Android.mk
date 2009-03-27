@@ -43,7 +43,9 @@ LOCAL_MODULE := audio
 
 include $(BUILD_SHARED_LIBRARY)
 
-# liba2sp
+#
+# liba2dp
+# This is linked to Audioflinger so **LGPL only**
 
 include $(CLEAR_VARS)
 
@@ -53,23 +55,13 @@ LOCAL_SRC_FILES:= \
 	../sbc/sbc.c.arm \
 	../sbc/sbc_primitives.c
 
-# to improve SBC performance	
+# to improve SBC performance
 LOCAL_CFLAGS:= -funroll-loops
 
 LOCAL_C_INCLUDES:= \
-	$(call include-path-for, bluez-libs) \
-	$(call include-path-for, bluez-utils)/common \
-	$(call include-path-for, bluez-utils)/hcid \
-	$(call include-path-for, bluez-utils)/sdpd \
-	$(call include-path-for, bluez-utils)/eglib \
-	$(call include-path-for, bluez-utils)/gdbus \
 	$(call include-path-for, bluez-utils)/sbc \
-	$(call include-path-for, dbus)
 
 LOCAL_SHARED_LIBRARIES := \
-	libbluetooth \
-	libhcid \
-	libdbus \
 	libcutils
 
 LOCAL_MODULE := liba2dp

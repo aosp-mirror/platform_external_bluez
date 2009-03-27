@@ -302,6 +302,20 @@ Methods		boolean IsConnected()
 
 			Returns TRUE if AVRCP is connected.
 
+		void Connect()
+
+			Connect to AVRCP on the remote device.
+
+			NOTE: Most remote devices do not allow AVRCP without
+			A2DP, so this is intended for testing purposes.
+
+		void Disconnect()
+
+			Disconnect from the remote device.
+
+			NOTE: Most remote devices do not allow AVRCP without
+			A2DP, so this is intended for testing purposes.
+
 Signals		void Connected()
 
 			Sent when a successful AVRCP connection has been made.

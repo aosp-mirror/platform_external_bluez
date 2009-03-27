@@ -394,18 +394,28 @@ failed:
 	sink->session = NULL;
 }
 
-gboolean sink_setup_stream(struct sink *sink, struct avdtp *session)
+gboolean sink_setup_stream(struct sink *sink, struct avdtp *session,
+				DBusConnection *conn, DBusMessage *msg)
 {
+	struct pending_request *pending;
+
 	if (sink->connect || sink->disconnect)
 		return FALSE;
 
 	if (session && !sink->session)
 		sink->session = avdtp_ref(session);
 
-	if (avdtp_discover(sink->session, discovery_complete, sink) < 0)
-		return FALSE;
+	pending = g_new0(struct pending_request, 1);
+	if (conn && msg) {
+		pending->conn = dbus_connection_ref(conn);
+		pending->msg = dbus_message_ref(msg);
+	}
+	sink->connect = pending;
 
-	sink->connect = g_new0(struct pending_request, 1);
+	if (avdtp_discover(sink->session, discovery_complete, sink) < 0) {
+		pending_request_free(pending);
+		return FALSE;
+	}
 
 	return TRUE;
 }
@@ -415,7 +425,6 @@ static DBusMessage *sink_connect(DBusConnection *conn,
 {
 	struct audio_device *dev = data;
 	struct sink *sink = dev->sink;
-	struct pending_request *pending;
 
 	if (!sink->session)
 		sink->session = avdtp_get(&dev->src, &dev->dst);
@@ -433,13 +442,9 @@ static DBusMessage *sink_connect(DBusConnection *conn,
 						".AlreadyConnected",
 						"Device Already Connected");
 
-	if (!sink_setup_stream(sink, NULL))
+	if (!sink_setup_stream(sink, NULL, conn, msg))
 		return g_dbus_create_error(msg, ERROR_INTERFACE ".FAILED",
 						"Failed to create a stream");
-
-	pending = sink->connect;
-	pending->conn = dbus_connection_ref(conn);
-	pending->msg = dbus_message_ref(msg);
 
 	debug("stream creation in progress");
 

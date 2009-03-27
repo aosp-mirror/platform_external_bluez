@@ -719,7 +719,7 @@ static int bluetooth_init(struct bluetooth_data *data)
 	data->server.fd = sk;
 	data->server.events = POLLIN;
 
-    return 0;
+	return 0;
 }
 
 static int bluetooth_configure(struct bluetooth_data *data)
@@ -816,7 +816,7 @@ int a2dp_write(a2dpData d, const void* buffer, int count)
 {
 	struct bluetooth_data* data = (struct bluetooth_data*)d;
 	uint8_t* src = (uint8_t *)buffer;
-	int codesize = data->codesize;
+	int codesize;
 	int err, ret = 0;
 	long frames_left = count;
 	int encoded, written;
@@ -836,8 +836,8 @@ int a2dp_write(a2dpData d, const void* buffer, int count)
 
 configure:
 	if (!data->configured) {
-    	err = bluetooth_configure(data);
-    	if (err < 0)
+		err = bluetooth_configure(data);
+		if (err < 0)
 			return err;
 		did_configure = 1;
 	}
@@ -852,6 +852,8 @@ configure:
 			return err;
 		}
 	}
+
+	codesize = data->codesize;
 
 	while (frames_left >= codesize) {
 		/* Enough data to encode (sbc wants 512 byte blocks) */

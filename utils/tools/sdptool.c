@@ -1616,7 +1616,7 @@ static int add_handsfree_ag(sdp_session_t *session, svc_info_t *si)
 	sdp_record_t record;
 	uint8_t u8 = si->channel ? si->channel : 7;
 	/* Set bits for supported features. */
-	uint16_t u16 = 0x07;
+	uint16_t u16 = 0x03;
 	sdp_data_t *channel, *features;
 	uint8_t netid = si->network ? si->network : 0x01; // ???? profile document
 	sdp_data_t *network = sdp_data_alloc(SDP_UINT8, &netid);

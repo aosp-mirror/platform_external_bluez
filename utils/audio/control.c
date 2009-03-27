@@ -71,7 +71,9 @@
 /* ctype entries */
 #define CTYPE_CONTROL		0x0
 #define CTYPE_STATUS		0x1
+#define CTYPE_NOT_IMPLEMENTED	0x8
 #define CTYPE_ACCEPTED		0x9
+#define CTYPE_REJECTED		0xA
 #define CTYPE_STABLE		0xC
 
 /* opcodes */
@@ -494,21 +496,21 @@ static gboolean session_cb(GIOChannel *chan, GIOCondition cond,
 			avrcp->code, avrcp->subunit_type, avrcp->subunit_id,
 			avrcp->opcode, operand_count);
 
-	if (avctp->packet_type == AVCTP_PACKET_SINGLE &&
-			avctp->cr == AVCTP_COMMAND &&
-			avctp->pid == htons(AV_REMOTE_SVCLASS_ID) &&
+	if (avctp->packet_type != AVCTP_PACKET_SINGLE) {
+		avctp->cr = AVCTP_RESPONSE;
+		avrcp->code = CTYPE_NOT_IMPLEMENTED;
+	} else if (avctp->pid != htons(AV_REMOTE_SVCLASS_ID)) {
+		avctp->ipid = 1;
+		avctp->cr = AVCTP_RESPONSE;
+		avrcp->code = CTYPE_REJECTED;
+	} else if (avctp->cr == AVCTP_COMMAND &&
 			avrcp->code == CTYPE_CONTROL &&
 			avrcp->subunit_type == SUBUNIT_PANEL &&
 			avrcp->opcode == OP_PASSTHROUGH) {
 		handle_panel_passthrough(session, operands, operand_count);
 		avctp->cr = AVCTP_RESPONSE;
 		avrcp->code = CTYPE_ACCEPTED;
-		ret = write(session->sock, buf, packet_size);
-	}
-
-	if (avctp->packet_type == AVCTP_PACKET_SINGLE &&
-			avctp->cr == AVCTP_COMMAND &&
-			avctp->pid == htons(AV_REMOTE_SVCLASS_ID) &&
+	} else if (avctp->cr == AVCTP_COMMAND &&
 			avrcp->code == CTYPE_STATUS &&
 			(avrcp->opcode == OP_UNITINFO
 			|| avrcp->opcode == OP_SUBUNITINFO)) {
@@ -516,8 +518,11 @@ static gboolean session_cb(GIOChannel *chan, GIOCondition cond,
 		avrcp->code = CTYPE_STABLE;
 		debug("reply to %s", avrcp->opcode == OP_UNITINFO ?
 				"OP_UNITINFO" : "OP_SUBUNITINFO");
-		ret = write(session->sock, buf, packet_size);
+	} else {
+		avctp->cr = AVCTP_RESPONSE;
+		avrcp->code = CTYPE_REJECTED;
 	}
+	ret = write(session->sock, buf, packet_size);
 
 	return TRUE;
 
@@ -935,6 +940,40 @@ void avrcp_exit(void)
 	connection = NULL;
 }
 
+static DBusMessage *control_connect(DBusConnection *conn, DBusMessage *msg,
+					void *data)
+{
+	struct audio_device *device = data;
+	DBusMessage *reply;
+	dbus_bool_t result;
+
+	reply = dbus_message_new_method_return(msg);
+	if (!reply)
+		return NULL;
+
+	result = avrcp_connect(device);
+
+	dbus_message_append_args(reply, DBUS_TYPE_BOOLEAN, &result,
+					DBUS_TYPE_INVALID);
+
+	return reply;
+}
+
+static DBusMessage *control_disconnect(DBusConnection *conn, DBusMessage *msg,
+					void *data)
+{
+	struct audio_device *device = data;
+	DBusMessage *reply;
+
+	reply = dbus_message_new_method_return(msg);
+	if (!reply)
+		return NULL;
+
+	avrcp_disconnect(device);
+
+	return reply;
+}
+
 static DBusMessage *control_is_connected(DBusConnection *conn,
 						DBusMessage *msg,
 						void *data)
@@ -957,6 +996,8 @@ static DBusMessage *control_is_connected(DBusConnection *conn,
 }
 
 static GDBusMethodTable control_methods[] = {
+	{ "Connect",		"",	"b",	control_connect},
+	{ "Disconnect",		"",	"",	control_disconnect},
 	{ "IsConnected",	"",	"b",	control_is_connected },
 	{ NULL, NULL, NULL, NULL }
 };
