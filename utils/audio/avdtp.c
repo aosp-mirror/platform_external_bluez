@@ -583,6 +583,11 @@ static gboolean disconnect_timeout(gpointer user_data)
 
 	assert(session->ref == 1);
 
+	if (!g_slist_find(sessions, session)) {
+		error("disconnect_timeout called after session was freed");
+		return FALSE;
+	}
+
 	session->dc_timer = 0;
 	stream_setup = session->stream_setup;
 	session->stream_setup = FALSE;
