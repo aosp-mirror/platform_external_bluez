@@ -3000,6 +3000,11 @@ static void auth_cb(DBusError *derr, void *user_data)
 	struct audio_device *dev;
 	GIOChannel *io;
 
+	if (!g_slist_find(sessions, session)) {
+		error("auth_cb called after session was freed");
+		return;
+	}
+
 	if (derr && dbus_error_is_set(derr)) {
 		error("Access denied: %s", derr->message);
 		if (dbus_error_has_name(derr, DBUS_ERROR_NO_REPLY)) {
