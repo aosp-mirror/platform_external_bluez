@@ -613,17 +613,13 @@ static int avdtp_write(struct bluetooth_data *data)
 		print_time("send", begin2, end2);
 #endif
 		if (ret < 0) {
-			ERR("send returned %d errno %s.", ret, strerror(errno));
-			ret = -errno;
+			/* can happen during normal remote disconnect */
+			VDBG("send() failed: %d (errno %s)", ret, strerror(errno));
 		}
 	} else {
-		ret = -errno;
-		ERR("poll failed: %d", ret);
-	}
-
-	if (ret < 0) {
-		close(data->stream.fd);
-		data->stream.fd = -1;
+		/* can happen during normal remote disconnect */
+		VDBG("poll() failed: %d (revents = %d, errno %s)",
+				ret, data->stream.revents, strerror(errno));
 	}
 
 	/* Reset buffer of data to send */
@@ -636,7 +632,7 @@ static int avdtp_write(struct bluetooth_data *data)
 	end = get_microseconds();
 	print_time("avdtp_write", begin, end);
 #endif
-	return ret;
+	return 0;  /* always return success */
 }
 
 static int audioservice_send(struct bluetooth_data *data,
