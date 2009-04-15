@@ -583,6 +583,11 @@ static gboolean disconnect_timeout(gpointer user_data)
 
 	assert(session->ref == 1);
 
+	if (!g_slist_find(sessions, session)) {
+		error("disconnect_timeout called after session was freed");
+		return FALSE;
+	}
+
 	session->dc_timer = 0;
 	stream_setup = session->stream_setup;
 	session->stream_setup = FALSE;
@@ -2999,6 +3004,11 @@ static void auth_cb(DBusError *derr, void *user_data)
 	struct avdtp *session = user_data;
 	struct audio_device *dev;
 	GIOChannel *io;
+
+	if (!g_slist_find(sessions, session)) {
+		error("auth_cb called after session was freed");
+		return;
+	}
 
 	if (derr && dbus_error_is_set(derr)) {
 		error("Access denied: %s", derr->message);
