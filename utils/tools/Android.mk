@@ -159,3 +159,42 @@ LOCAL_STATIC_LIBRARIES := \
 LOCAL_MODULE:=hciattach
 
 include $(BUILD_EXECUTABLE)
+
+# Tools useful only for CSR Bluetooth chips
+ifeq ($(BOARD_HAVE_BLUETOOTH_CSR),true)
+
+#
+# bccmd
+#
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES:= \
+	bccmd.c \
+	csr.c \
+	csr_hci.c \
+	csr_bcsp.c \
+	csr_h4.c \
+	csr_3wire.c \
+	ubcsp.h \
+	ubcsp.c
+
+LOCAL_C_INCLUDES:= \
+	$(call include-path-for, bluez-libs) \
+	$(call include-path-for, bluez-utils)/common/
+
+LOCAL_CFLAGS:= \
+	-DVERSION=\"3.36\" -fpermissive
+
+LOCAL_SHARED_LIBRARIES := \
+	libbluetooth
+
+LOCAL_STATIC_LIBRARIES := \
+	libbluez-utils-common-static
+
+LOCAL_MODULE:=bccmd
+
+include $(BUILD_EXECUTABLE)
+
+# End of BOARD_HAVE_BLUETOOTH_CSR
+endif
