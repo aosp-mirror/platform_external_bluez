@@ -86,7 +86,7 @@
 #define POLL_TIMEOUT			1000
 
 /* timeout in milliseconds for a2dp_write */
-#define WRITE_TIMEOUT			100
+#define WRITE_TIMEOUT			500
 
 
 typedef enum {
@@ -831,17 +831,22 @@ static void set_command(struct bluetooth_data *data, a2dp_command_t command)
 	pthread_mutex_unlock(&data->mutex);
 }
 
+/* timeout is in milliseconds */
 static int wait_for_start(struct bluetooth_data *data, int timeout)
 {
 	a2dp_state_t state = data->state;
+	struct timeval tv;
 	struct timespec ts;
-	uint64_t begin, end;
 	int err = 0;
 
+#ifdef ENABLE_TIMING
+	uint64_t begin, end;
 	begin = get_microseconds();
-	end = begin + (timeout * 1000);
-	ts.tv_sec = end / (1000 * 1000);
-	ts.tv_nsec = (end % (1000 * 1000)) * 1000;
+#endif
+
+	gettimeofday(&tv, (struct timezone *) NULL);
+	ts.tv_sec = tv.tv_sec + (timeout / 1000);
+	ts.tv_nsec = (tv.tv_usec + (timeout % 1000) * 1000L ) * 1000L;
 
 	while (state != A2DP_STATE_STARTED && !err) {
 		if (state == A2DP_STATE_NONE)
