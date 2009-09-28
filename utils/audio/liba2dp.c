@@ -115,6 +115,8 @@ struct bluetooth_data {
 	a2dp_command_t command;			/* Current command for a2dp_thread */
 	pthread_t thread;
 	pthread_mutex_t mutex;
+	int started;
+	pthread_cond_t thread_start;
 	pthread_cond_t thread_wait;
 	pthread_cond_t client_wait;
 
@@ -884,6 +886,10 @@ static void* a2dp_thread(void *d)
 		a2dp_command_t command;
 
 		pthread_mutex_lock(&data->mutex);
+		if (!data->started) {
+			data->started = 1;
+			pthread_cond_signal(&data->thread_start);
+		}
 		pthread_cond_wait(&data->thread_wait, &data->mutex);
 		command = data->command;
 		pthread_mutex_unlock(&data->mutex);
@@ -950,18 +956,36 @@ int a2dp_init(int rate, int channels, a2dpData* dataPtr)
 	sbc_init(&data->sbc, 0);
 
 	pthread_mutex_init(&data->mutex, NULL);
+	pthread_cond_init(&data->thread_start, NULL);
 	pthread_cond_init(&data->thread_wait, NULL);
 	pthread_cond_init(&data->client_wait, NULL);
 
+	pthread_mutex_lock(&data->mutex);
+	data->started = 0;
+
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-	pthread_create(&data->thread, &attr, a2dp_thread, data);
+
+	err = pthread_create(&data->thread, &attr, a2dp_thread, data);
+	if (err) {
+		/* If the thread create fails we must not wait */
+		pthread_mutex_unlock(&data->mutex);
+		err = -err;
+		goto error;
+	}
+
+	while (!data->started) {
+		pthread_cond_wait(&data->thread_start, &data->mutex);
+	}
+
+	pthread_mutex_unlock(&data->mutex);
 
 	*dataPtr = data;
 	return 0;
    
 error:
 	bluetooth_close(data);
+	sbc_finish(&data->sbc);
 	free(data);
 
 	return err;
