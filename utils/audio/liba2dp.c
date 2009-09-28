@@ -822,12 +822,18 @@ static void set_state(struct bluetooth_data *data, a2dp_state_t state)
 	pthread_cond_signal(&data->client_wait);
 }
 
-static void set_command(struct bluetooth_data *data, a2dp_command_t command)
+static void __set_command(struct bluetooth_data *data, a2dp_command_t command)
 {
 	VDBG("set_command %d\n", command);
-	pthread_mutex_lock(&data->mutex);
 	data->command = command;
 	pthread_cond_signal(&data->thread_wait);
+	return;
+}
+
+static void set_command(struct bluetooth_data *data, a2dp_command_t command)
+{
+	pthread_mutex_lock(&data->mutex);
+	__set_command(data, command);
 	pthread_mutex_unlock(&data->mutex);
 }
 
@@ -848,20 +854,24 @@ static int wait_for_start(struct bluetooth_data *data, int timeout)
 	ts.tv_sec = tv.tv_sec + (timeout / 1000);
 	ts.tv_nsec = (tv.tv_usec + (timeout % 1000) * 1000L ) * 1000L;
 
+	pthread_mutex_lock(&data->mutex);
 	while (state != A2DP_STATE_STARTED && !err) {
-		if (state == A2DP_STATE_NONE)
-			return -ENODEV;
-		else if (state == A2DP_STATE_INITIALIZED)
-			set_command(data, A2DP_CMD_CONFIGURE);
-		else if (state == A2DP_STATE_CONFIGURED)
-			set_command(data, A2DP_CMD_START);
+		if (state == A2DP_STATE_INITIALIZED)
+			__set_command(data, A2DP_CMD_CONFIGURE);
+		else if (state == A2DP_STATE_CONFIGURED) {
+			__set_command(data, A2DP_CMD_START);
+		}
 
-		pthread_mutex_lock(&data->mutex);
 		while ((err = pthread_cond_timedwait(&data->client_wait, &data->mutex, &ts))
 				== EINTR) ;
 		state = data->state;
-		pthread_mutex_unlock(&data->mutex);
+
+		if (state == A2DP_STATE_NONE) {
+			err = ENODEV;
+			break;
+		}
 	}
+	pthread_mutex_unlock(&data->mutex);
 
 #ifdef ENABLE_TIMING
 	end = get_microseconds();
