@@ -1001,6 +1001,7 @@ int a2dp_init(int rate, int channels, a2dpData* dataPtr)
 	pthread_cond_signal(&data->thread_wait);
 
 	pthread_mutex_unlock(&data->mutex);
+	pthread_attr_destroy(&attr);
 
 	*dataPtr = data;
 	return 0;
@@ -1008,6 +1009,7 @@ int a2dp_init(int rate, int channels, a2dpData* dataPtr)
 error:
 	bluetooth_close(data);
 	sbc_finish(&data->sbc);
+	pthread_attr_destroy(&attr);
 	a2dp_free(data);
 
 	return err;
