@@ -855,15 +855,28 @@ static int wait_for_start(struct bluetooth_data *data, int timeout)
 	ts.tv_nsec = (tv.tv_usec + (timeout % 1000) * 1000L ) * 1000L;
 
 	pthread_mutex_lock(&data->mutex);
-	while (state != A2DP_STATE_STARTED && !err) {
+	while (state != A2DP_STATE_STARTED) {
 		if (state == A2DP_STATE_INITIALIZED)
 			__set_command(data, A2DP_CMD_CONFIGURE);
 		else if (state == A2DP_STATE_CONFIGURED) {
 			__set_command(data, A2DP_CMD_START);
 		}
+again:
+		err = pthread_cond_timedwait(&data->client_wait, &data->mutex, &ts);
+		if (err) {
+			/* don't timeout if we're done */
+			if (data->state == A2DP_STATE_STARTED) {
+				err = 0;
+				break;
+			}
+			if (err == ETIMEDOUT)
+				break;
+			goto again;
+		}
 
-		while ((err = pthread_cond_timedwait(&data->client_wait, &data->mutex, &ts))
-				== EINTR) ;
+		if (state == data->state)
+			goto again;
+
 		state = data->state;
 
 		if (state == A2DP_STATE_NONE) {
