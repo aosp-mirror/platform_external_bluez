@@ -86,7 +86,7 @@
 #define POLL_TIMEOUT			1000
 
 /* timeout in milliseconds for a2dp_write */
-#define WRITE_TIMEOUT			500
+#define WRITE_TIMEOUT			1000
 
 
 typedef enum {
