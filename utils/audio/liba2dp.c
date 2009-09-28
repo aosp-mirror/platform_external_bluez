@@ -872,6 +872,16 @@ static int wait_for_start(struct bluetooth_data *data, int timeout)
 	return -err;
 }
 
+static void a2dp_free(struct bluetooth_data *data)
+{
+	pthread_cond_destroy(&data->client_wait);
+	pthread_cond_destroy(&data->thread_wait);
+	pthread_cond_destroy(&data->thread_start);
+	pthread_mutex_destroy(&data->mutex);
+	free(data);
+	return;
+}
+
 static void* a2dp_thread(void *d)
 {
 	struct bluetooth_data* data = (struct bluetooth_data*)d;
@@ -925,7 +935,7 @@ static void* a2dp_thread(void *d)
 			case A2DP_CMD_QUIT:
 				bluetooth_close(data);
 				sbc_finish(&data->sbc);
-				free(data);
+				a2dp_free(data);
 				goto done;
 
 			default:
@@ -998,7 +1008,7 @@ int a2dp_init(int rate, int channels, a2dpData* dataPtr)
 error:
 	bluetooth_close(data);
 	sbc_finish(&data->sbc);
-	free(data);
+	a2dp_free(data);
 
 	return err;
 }
