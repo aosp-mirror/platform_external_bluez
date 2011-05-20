@@ -1,0 +1,8 @@
+Change-Id: Ice4f50efcce160b3b00cca4c793066eeeb9ed03c
+Code-Review+2: Nick Pelly <npelly@google.com>
+Verified+1: Nick Pelly <npelly@google.com>
+Submitted-by: Nick Pelly <npelly@google.com>
+Submitted-at: Wed, 30 Sep 2009 11:06:55 -0700
+Reviewed-on: https://review.source.android.com/11993
+Project: platform/external/bluez
+Branch: refs/heads/master
